@@ -23,21 +23,17 @@ public class WebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
 
-        var sessionId = session.getId();
+        final String sessionId = session.getId();
+        final String enterdMessage = sessionId + "님이 입장하셨습니다.";
+
         log.trace("new connection request: {}", sessionId);
 
         sessions.put(sessionId, session); // 세션 저장
 
-        Message message = Message.builder()
-                .sender(sessionId)
-                .receiver("all")
-                .build();
-        message.newConnect(); // 새로운 접속자
-
         sessions.values().forEach(s -> {
             try{
                 if(!s.getId().equals(sessionId)){
-                    s.sendMessage(new TextMessage(Utils.getString(message)));
+                    s.sendMessage(new TextMessage(enterdMessage));
                 }
             } catch (Exception e){
                 log.error("fail to send message", e);
@@ -49,14 +45,16 @@ public class WebSocketHandler extends TextWebSocketHandler {
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage textMessage) throws Exception {
 
-        Message message = Utils.getObject(textMessage.getPayload());
-        message.setSender(session.getId());
-
-        WebSocketSession receiver = sessions.get(message.getReceiver());
-
-        if(receiver != null && receiver.isOpen()){
-            receiver.sendMessage(new TextMessage(Utils.getString(message)));
-        }
+        final String sessionId = session.getId();
+        sessions.values().forEach(s -> {
+            if(!s.getId().equals(sessionId) && s.isOpen()){
+                try{
+                    s.sendMessage(textMessage);
+                } catch (Exception e){
+                    log.error("runtime exception", e);
+                }
+            }
+        });
     }
 
     // 웹소켓 통신 에러
@@ -70,16 +68,17 @@ public class WebSocketHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) throws Exception {
 
-        var sessionId = session.getId();
-        sessions.remove(sessionId);
+        final String  sessionId = session.getId();
+        final String exitMessage = sessionId + "님이 퇴장하셨습니다.";
 
-        final Message message = new Message();
-        message.closeConnect(); // 접속 종료
-        message.setSender(sessionId);
+        sessions.remove(sessionId); // 세션 삭제
 
+        // 퇴장 메시지 전송
         sessions.values().forEach(s -> {
             try{
-                s.sendMessage(new TextMessage(Utils.getString(message)));
+                if(!s.getId().equals(sessionId) && s.isOpen()) {
+                    s.sendMessage(new TextMessage(exitMessage));
+                }
             } catch (Exception e){
                 log.error("fail to send message", e);
             }
